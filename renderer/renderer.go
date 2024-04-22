@@ -2,9 +2,7 @@ package renderer
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"reflect"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"

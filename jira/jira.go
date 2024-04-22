@@ -2,6 +2,7 @@ package jira
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -98,11 +99,14 @@ func (j Jira) GetMyAccount() (*jira.User, error) {
 		return nil, err
 	}
 
-	fmt.Printf("Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
-		response.Status,
-		response.MaxResults,
-		response.Total,
-	)
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("Failed to get user info. Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
+			response.Status,
+			response.MaxResults,
+			response.Total,
+		)
+	}
+
 	return user, err
 }
 
@@ -126,20 +130,72 @@ func (j Jira) GetComments(issueNumber string) ([]*jira.Comment, error) {
 	return comments, err
 }
 
-func (j Jira) AddComment(issueNumber, content string) (*jira.Comment, error) {
-	comment, response, err := j.client.Issue.AddComment(issueNumber, &jira.Comment{
-		Body: content,
+func (j Jira) AddComment(issueNumber string, content []byte) error {
+	data := make(map[string]interface{})
+	err := json.Unmarshal(content, &data)
+	if err != nil {
+		panic(err)
+	}
+	body := map[string]interface{}{
+		"type":    "doc",
+		"version": 1,
+		"content": data,
+	}
+	b, err := json.Marshal(body)
+	_, response, err := j.client.Issue.AddComment(issueNumber, &jira.Comment{
+		Body: string(b),
 	})
 	if err != nil {
 		fmt.Println(err)
-		return nil, fmt.Errorf("Failed to create comment: %v", err)
+		return fmt.Errorf("Failed to create comment: %v", err)
+	} else if response.StatusCode != 201 {
+		return fmt.Errorf(
+			"Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
+			response.Status,
+			response.MaxResults,
+			response.Total,
+		)
 	}
-	fmt.Printf("Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
-		response.Status,
-		response.MaxResults,
-		response.Total,
+	return nil
+}
+
+func (j Jira) AddCommentCustom(issueNumber string, content []byte) error {
+	data := make(map[string]interface{})
+	err := json.Unmarshal(content, &data)
+	if err != nil {
+		panic(err)
+	}
+	body := map[string]interface{}{
+		"body": data,
+	}
+
+	path := fmt.Sprintf("/rest/api/3/issue/%s/comment", issueNumber)
+	request, err := j.client.NewRequest(
+		"POST",
+		path,
+		body,
 	)
-	return comment, nil
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	if err != nil {
+		panic(err)
+	}
+	response, err := j.client.Do(request, nil)
+	if err != nil {
+		return err
+	} else if response.StatusCode != 201 {
+		return fmt.Errorf(
+			"Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
+			response.Status,
+			response.MaxResults,
+			response.Total,
+		)
+	}
+	return nil
 }
 
 func (j Jira) DeleteComment(issueNumber, commentId string) error {

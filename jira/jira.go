@@ -111,23 +111,32 @@ func (j Jira) GetMyAccount() (*jira.User, error) {
 }
 
 func (j Jira) GetComments(issueNumber string) ([]*jira.Comment, error) {
-	issue, response, err := j.client.Issue.Get(issueNumber, nil)
+	issue, _, err := j.client.Issue.Get(issueNumber, &jira.GetQueryOptions{
+		Expand: "renderedFields",
+	})
 	if err != nil {
+		return nil, err
 	}
-	fmt.Printf("Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
-		response.Status,
-		response.MaxResults,
-		response.Total,
-	)
-	comments := issue.Fields.Comments.Comments
-	for _, v := range comments {
-		fmt.Printf("\tID: %s\n\tAuthor Email: %s\n\tBody: %s\n\n",
-			v.ID,
-			v.Author.EmailAddress,
-			v.Body,
-		)
-	}
+	comments := issue.RenderedFields.Comments.Comments
 	return comments, err
+}
+
+func (j Jira) GetComment(issueNumber, commentId string) (*jira.Comment, error) {
+	path := fmt.Sprintf("/rest/api/3/issue/%s/comment/%s", issueNumber, commentId)
+	request, err := j.client.NewRequest(
+		"GET",
+		path,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	comment := new(jira.Comment)
+	_, err = j.client.Do(request, comment)
+	if err != nil {
+		return nil, err
+	}
+	return comment, nil
 }
 
 func (j Jira) AddComment(issueNumber string, content []byte) error {
@@ -214,11 +223,8 @@ func (j Jira) DeleteComment(issueNumber, commentId string) error {
 	if err != nil {
 		fmt.Println(err)
 		return err
+	} else if response.StatusCode != 204 {
+		return errors.New("Failed to delete comment. Expected status 204.")
 	}
-	fmt.Printf("Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
-		response.Status,
-		response.MaxResults,
-		response.Total,
-	)
 	return nil
 }

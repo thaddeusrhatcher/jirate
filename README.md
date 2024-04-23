@@ -3,6 +3,7 @@
 Jirate is a command-line tool for working with Jira Issue comments.
 It features an interactive markdown editor for creating and updating comments.
 
+Btw, the `renderer` package for converting markdown to ADF was ripped from some random repo I found, so I take no credit for that. The author had a print statement in the `Render()` function that was printing the entire ADF tree which was getting in the way.
 
 # Setup
 

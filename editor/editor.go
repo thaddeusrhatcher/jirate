@@ -26,6 +26,20 @@ func InitialModel() Model {
 		err:      nil,
 	}
 }
+func InitialModelWithValue(value string) Model {
+	ti := textarea.New()
+	ti.SetHeight(10)
+	ti.SetWidth(45)
+	ti.Focus()
+	ti.SetValue(value)
+	return Model{
+		textarea: ti,
+		err:      nil,
+	}
+}
+func (m Model) SetValue(value string) {
+	m.textarea.SetValue(value)
+}
 
 func (m Model) Init() tea.Cmd {
 	return textarea.Blink

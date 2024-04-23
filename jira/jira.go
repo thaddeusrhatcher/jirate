@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/andygrunwald/go-jira"
@@ -23,9 +22,12 @@ type Jira struct {
 }
 
 func (c *Config) loadConfig() error {
-	file, err := os.Open(config.CONFIG_PATH)
+	file, err := config.GetConfigFile()
+
 	if err != nil {
-		return err
+		return errors.New(`Failed to open the config file.
+			Please verify the following exists: $HOME/.config/jirate/config.txt.
+		`)
 	}
 
 	fileScanner := bufio.NewScanner(file)
@@ -48,8 +50,7 @@ func (c *Config) loadConfig() error {
 	}
 	url, ok := vals["url"]
 	if !ok {
-		url = config.DEFAULT_DOMAIN
-		fmt.Println("url not set in config.txt, defaulting to ", url)
+		return errors.New("Missing url in config.txt")
 	}
 	c.Auth = jira.BasicAuthTransport{
 		Username: username,
@@ -128,31 +129,53 @@ func (j Jira) GetComment(issueNumber, commentId string) (*jira.Comment, error) {
 		path,
 		nil,
 	)
+	query := request.URL.Query()
+	query.Add("expand", "renderedBody")
+	request.URL.RawQuery = query.Encode()
 	if err != nil {
 		return nil, err
 	}
-	comment := new(jira.Comment)
-	_, err = j.client.Do(request, comment)
+	rawComment := make(map[string]any)
+	_, err = j.client.Do(request, &rawComment)
 	if err != nil {
 		return nil, err
+	}
+	delete(rawComment, "body")
+	comment := new(jira.Comment)
+	b, err := json.Marshal(rawComment)
+	err = json.Unmarshal(b, comment)
+	comment.Body = rawComment["renderedBody"].(string)
+
+	if false {
+		author, ok := rawComment["author"].(map[string]any)
+		if !ok {
+			return nil, errors.New("Missing 'author' in response body")
+		}
+		accountId := author["accountId"].(string)
+		emailAddress := author["emailAddress"].(string)
+		displayName := author["displayName"].(string)
+		selfLink := author["selfLink"].(string)
+		comment.Author = jira.User{
+			AccountID:    accountId,
+			EmailAddress: emailAddress,
+			DisplayName:  displayName,
+			Self:         selfLink,
+		}
+		selfLink = rawComment["self"].(string)
+		created := rawComment["created"].(string)
+		updated := rawComment["updated"].(string)
+		id := rawComment["id"].(string)
+		comment.Self = selfLink
+		comment.Created = created
+		comment.Updated = updated
+		comment.ID = id
 	}
 	return comment, nil
 }
 
-func (j Jira) AddComment(issueNumber string, content []byte) error {
-	data := make(map[string]interface{})
-	err := json.Unmarshal(content, &data)
-	if err != nil {
-		panic(err)
-	}
-	body := map[string]interface{}{
-		"type":    "doc",
-		"version": 1,
-		"content": data,
-	}
-	b, err := json.Marshal(body)
+func (j Jira) AddComment(issueNumber, content string) error {
 	_, response, err := j.client.Issue.AddComment(issueNumber, &jira.Comment{
-		Body: string(b),
+		Body: content,
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -207,9 +230,47 @@ func (j Jira) AddCommentCustom(issueNumber string, content []byte) error {
 	return nil
 }
 
+func (j Jira) UpdateCommentCustom(issueNumber, commentId string, content []byte) error {
+	data := make(map[string]interface{})
+	err := json.Unmarshal(content, &data)
+	if err != nil {
+		panic(err)
+	}
+	body := map[string]interface{}{
+		"body": data,
+	}
+
+	path := fmt.Sprintf("/rest/api/3/issue/%s/comment/%s", issueNumber, commentId)
+	request, err := j.client.NewRequest(
+		"PUT",
+		path,
+		body,
+	)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	if err != nil {
+		panic(err)
+	}
+	response, err := j.client.Do(request, nil)
+	if err != nil {
+		return err
+	} else if response.StatusCode != 200 {
+		return fmt.Errorf(
+			"Response: \n\tstatus: %s\n\tmax results: %d\n\ttotal: %d\n",
+			response.Status,
+			response.MaxResults,
+			response.Total,
+		)
+	}
+	return nil
+}
+
 func (j Jira) DeleteComment(issueNumber, commentId string) error {
 	path := fmt.Sprintf("/rest/api/2/issue/%s/comment/%s", issueNumber, commentId)
-	fmt.Println("path: ", path)
 	request, err := j.client.NewRequest(
 		"DELETE",
 		path,

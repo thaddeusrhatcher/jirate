@@ -10,6 +10,7 @@ import (
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/thaddeusrhatcher/jirate/editor"
 	"github.com/thaddeusrhatcher/jirate/jira"
 	"github.com/thaddeusrhatcher/jirate/renderer"
@@ -31,6 +32,16 @@ const prefix = `# Comment %s
 
 %s
 `
+
+const (
+	purple    = lipgloss.Color("99")
+	gray      = lipgloss.Color("245")
+	lightGray = lipgloss.Color("241")
+)
+
+var commentStyle = lipgloss.NewStyle().
+	BorderStyle(lipgloss.NormalBorder()).
+	BorderForeground(lipgloss.Color("63"))
 
 type Args struct {
 	action      action
@@ -129,7 +140,7 @@ func main() {
 				panic(err)
 			}
 
-			fmt.Print(out)
+			fmt.Println(commentStyle.Render(out))
 		}
 	case DeleteComment:
 		fmt.Printf("Deleting comment %s for issue %s.\n", args.commentId, args.issueNumber)

@@ -2,32 +2,21 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/andygrunwald/go-jira"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/thaddeusrhatcher/jirate/arg"
 	"github.com/thaddeusrhatcher/jirate/editor"
-	j "github.com/thaddeusrhatcher/jirate/jira"
+	jirateJira "github.com/thaddeusrhatcher/jirate/jira"
 	"github.com/thaddeusrhatcher/jirate/renderer"
 )
 
-var jiraClient *j.Jira
-
-type action string
-
-const (
-	GetIssue      action = "issue"
-	AddComment    action = "add"
-	ListComments  action = "list"
-	DeleteComment action = "delete"
-	UpdateComment action = "update"
-)
+var jiraClient *jirateJira.Jira
 
 const commentPrefix = `# Comment %s
 > Author Email: %v *Created: %s*
@@ -46,106 +35,109 @@ Summary: %s
 %s
 `
 
-const (
-	purple    = lipgloss.Color("99")
-	gray      = lipgloss.Color("245")
-	lightGray = lipgloss.Color("241")
-)
-
 var commentStyle = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(lipgloss.Color("63"))
 
-type Args struct {
-	action      action
-	issueNumber string
-	comment     string
-	useMarkdown bool
-	commentId   string
-}
-
-func parseArgs() (Args, error) {
-	rawArgs := os.Args[1:]
-	if len(rawArgs) < 2 {
-		return Args{}, errors.New("Missing required args")
-	}
-	a := Args{}
-	a.action = action(rawArgs[0])
-	a.issueNumber = rawArgs[1]
-	switch a.action {
-	case AddComment:
-		if rawArgs[2] == "md" {
-			a.useMarkdown = true
-		} else {
-			a.comment = strings.Join(rawArgs[2:], " ")
-		}
-	case UpdateComment, DeleteComment:
-		a.commentId = rawArgs[2]
-	}
-	return a, nil
-}
-
 func main() {
-	args, err := parseArgs()
+	args, err := arg.ParseArgs()
 	if err != nil {
 		fmt.Println("Missing required arguments")
-		panic(err)
+		os.Exit(1)
 	}
-	jiraClient, err := j.NewClient()
+	jiraClient, err := jirateJira.NewClient()
 	if err != nil {
-		panic(err)
+		os.Exit(1)
 	}
 
-	switch args.action {
-	case AddComment:
-		fmt.Printf("Adding comment to story %s\n", args.issueNumber)
-		if args.useMarkdown {
-			p := tea.NewProgram(editor.InitialModel())
-			if _, err := p.Run(); err != nil {
-				panic(err)
-			}
-			if editor.Quit || editor.Content == "" {
-				fmt.Println("Editor cancelled or contains no content. Exiting...")
-				os.Exit(1)
-			}
-			args.comment = editor.Content
+	switch args.Object {
+	case arg.ObjectComment:
+		switch args.Action {
+		case arg.ActionAdd:
+			fmt.Printf("Adding comment to story %s\n", args.IssueNumber)
+			if args.UseMarkdown {
+				p := tea.NewProgram(editor.InitialModel())
+				if _, err := p.Run(); err != nil {
+					panic(err)
+				}
+				if editor.Quit || editor.Content == "" {
+					fmt.Println("Editor cancelled or contains no content. Exiting...")
+					os.Exit(1)
+				}
+				args.Comment = editor.Content
 
-			buffer := new(bytes.Buffer)
-			err = renderer.Render(buffer, []byte(args.comment))
+				buffer := new(bytes.Buffer)
+				err = renderer.Render(buffer, []byte(args.Comment))
+				if err != nil {
+					fmt.Println("Failed to render ADF from content.")
+					panic(err)
+				}
+				err = jiraClient.AddCommentCustom(args.IssueNumber, buffer.Bytes())
+				if err != nil {
+					fmt.Println("Failed to create md comment.")
+					panic(err)
+				}
+			} else {
+				err = jiraClient.AddComment(args.IssueNumber, args.Comment)
+				if err != nil {
+					fmt.Println("Failed to create comment.")
+					panic(err)
+				}
+			}
+			fmt.Printf("Success!\n")
+		case arg.ActionList:
+			comments, err := jiraClient.GetComments(args.IssueNumber)
 			if err != nil {
-				fmt.Println("Failed to render ADF from content.")
+				fmt.Println("Failed to retrieve comments")
 				panic(err)
 			}
-			err = jiraClient.AddCommentCustom(args.issueNumber, buffer.Bytes())
-			if err != nil {
-				fmt.Println("Failed to create md comment.")
-				panic(err)
-			}
-		} else {
-			err = jiraClient.AddComment(args.issueNumber, args.comment)
-			if err != nil {
-				fmt.Println("Failed to create comment.")
-				panic(err)
-			}
-		}
-		fmt.Printf("Success!\n")
-	case ListComments:
-		comments, err := jiraClient.GetComments(args.issueNumber)
-		if err != nil {
-			fmt.Println("Failed to retrieve comments")
-			panic(err)
-		}
-		converter := md.NewConverter("", true, nil)
-		for _, c := range comments {
-			markdown, err := converter.ConvertString(c.Body)
+			converter := md.NewConverter("", true, nil)
+			for _, c := range comments {
+				markdown, err := converter.ConvertString(c.Body)
 
+				if err != nil {
+					fmt.Println("Failed to conert HTML to Markdown.")
+					panic(err)
+				}
+
+				full := fmt.Sprintf(commentPrefix,
+					c.ID, c.Author.EmailAddress, c.Created, markdown)
+				out, err := glamour.Render(full, "dark")
+
+				if err != nil {
+					fmt.Println("Failed to render markdown with Glamour")
+					panic(err)
+				}
+
+				fmt.Println(commentStyle.Render(out))
+			}
+		case arg.ActionDelete:
+			fmt.Printf("Deleting comment %s for issue %s.\n", args.CommentId, args.IssueNumber)
+			err := jiraClient.DeleteComment(args.IssueNumber, args.CommentId)
 			if err != nil {
-				fmt.Println("Failed to conert HTML to Markdown.")
+				fmt.Printf(
+					"Failed to delete comment %s in issue %s\n",
+					args.CommentId,
+					args.IssueNumber,
+				)
+				panic(err)
+			}
+			fmt.Println("Success!")
+		case arg.ActionUpdate:
+			comment, err := jiraClient.GetComment(args.IssueNumber, args.CommentId)
+			if err != nil {
+				fmt.Printf(
+					"Failed to get comment %s in issue %s\n",
+					args.CommentId,
+					args.IssueNumber,
+				)
 				panic(err)
 			}
 
+			converter := md.NewConverter("", true, nil)
+			markdown, err := converter.ConvertString(comment.Body)
 			full := fmt.Sprintf(commentPrefix,
-				c.ID, c.Author.EmailAddress, c.Created, markdown)
+				comment.ID, comment.Author.EmailAddress, comment.Created, markdown)
 			out, err := glamour.Render(full, "dark")
 
 			if err != nil {
@@ -153,77 +145,45 @@ func main() {
 				panic(err)
 			}
 
-			fmt.Println(commentStyle.Render(out))
-		}
-	case DeleteComment:
-		fmt.Printf("Deleting comment %s for issue %s.\n", args.commentId, args.issueNumber)
-		err := jiraClient.DeleteComment(args.issueNumber, args.commentId)
-		if err != nil {
-			fmt.Printf(
-				"Failed to delete comment %s in issue %s\n",
-				args.commentId,
-				args.issueNumber,
-			)
-			panic(err)
-		}
-		fmt.Println("Success!")
-	case UpdateComment:
-		comment, err := jiraClient.GetComment(args.issueNumber, args.commentId)
-		if err != nil {
-			fmt.Printf(
-				"Failed to get comment %s in issue %s\n",
-				args.commentId,
-				args.issueNumber,
-			)
-			panic(err)
-		}
+			fmt.Print(out)
 
-		converter := md.NewConverter("", true, nil)
-		markdown, err := converter.ConvertString(comment.Body)
-		full := fmt.Sprintf(commentPrefix,
-			comment.ID, comment.Author.EmailAddress, comment.Created, markdown)
-		out, err := glamour.Render(full, "dark")
+			if err != nil {
+				panic(err)
+			}
+			model := editor.InitialModelWithValue(markdown)
+			p := tea.NewProgram(model)
+			if _, err := p.Run(); err != nil {
+				panic(err)
+			}
+			if editor.Quit || editor.Content == "" {
+				fmt.Println("Editor cancelled or contains no content. Exiting...")
+				os.Exit(1)
+			}
+			args.Comment = editor.Content
 
-		if err != nil {
-			fmt.Println("Failed to render markdown with Glamour")
-			panic(err)
+			buffer := new(bytes.Buffer)
+			err = renderer.Render(buffer, []byte(args.Comment))
+			if err != nil {
+				fmt.Println("Failed to render ADF from content.")
+				panic(err)
+			}
+			err = jiraClient.UpdateCommentCustom(args.IssueNumber, args.CommentId, buffer.Bytes())
+			if err != nil {
+				fmt.Println("Failed to create md comment.")
+				panic(err)
+			}
+			fmt.Println("Success!")
 		}
+	case arg.ObjectIssue:
+		switch args.Action {
+		case arg.ActionGet:
+			issue, err := jiraClient.GetIssue(args.IssueNumber)
 
-		fmt.Print(out)
-
-		if err != nil {
-			panic(err)
+			if err != nil {
+				panic(err)
+			}
+			RenderIssue(issue)
 		}
-		model := editor.InitialModelWithValue(markdown)
-		p := tea.NewProgram(model)
-		if _, err := p.Run(); err != nil {
-			panic(err)
-		}
-		if editor.Quit || editor.Content == "" {
-			fmt.Println("Editor cancelled or contains no content. Exiting...")
-			os.Exit(1)
-		}
-		args.comment = editor.Content
-
-		buffer := new(bytes.Buffer)
-		err = renderer.Render(buffer, []byte(args.comment))
-		if err != nil {
-			fmt.Println("Failed to render ADF from content.")
-			panic(err)
-		}
-		err = jiraClient.UpdateCommentCustom(args.issueNumber, args.commentId, buffer.Bytes())
-		if err != nil {
-			fmt.Println("Failed to create md comment.")
-			panic(err)
-		}
-		fmt.Println("Success!")
-	case GetIssue:
-		issue, err := jiraClient.GetIssue(args.issueNumber)
-
-		if err != nil {
-			panic(err)
-		}
-		RenderIssue(issue)
 	}
 }
 
@@ -255,7 +215,7 @@ func RenderIssue(issue *jira.Issue) {
 
 }
 
-func listMyIssues(jiraClient j.Jira) {
+func listMyIssues(jiraClient jirateJira.Jira) {
 	fmt.Println("Getting your In Progress issues")
 	issues, err := jiraClient.GetMyIssues()
 	if err != nil {

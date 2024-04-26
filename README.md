@@ -47,6 +47,8 @@ To generate an API Token:
 1. Execute `go build`, this will create the `jirate` executable file.
 2. Execute `sudo mv jirate /usr/local/bin` to make it globally executable.
 
+Alternatively, run `make build-complete` from the Makefile which just bundles these two commands together.
+
 ## Usage
 
 The following are the current commands supported.

@@ -3,7 +3,7 @@
 Jirate is a command-line tool for working with Jira Issue comments.
 It features an interactive markdown editor for creating and updating comments.
 
-Btw, the `renderer` package for converting markdown to ADF was ripped from some random repo I found, so I take no credit for that. The author had a print statement in the `Render()` function that was printing the entire ADF tree which was getting in the way.
+> Btw, the `renderer` package for converting markdown to ADF was ripped from some random repo I found, so I take no credit for that. The author had a print statement in the `Render()` function that was printing the entire ADF tree which was getting in the way.
 
 # Setup
 
@@ -47,42 +47,54 @@ To generate an API Token:
 1. Execute `go build`, this will create the `jirate` executable file.
 2. Execute `sudo mv jirate /usr/local/bin` to make it globally executable.
 
+Alternatively, run `make build-complete` from the Makefile which just bundles these two commands together.
+
 ## Usage
 
 The following are the current commands supported.
+* Issues: `get`
+* Comments: `add`, `update`, `list`, `delete`
 
-**NOTE:** This project is a work-in-progress. The error handling if you don't provide the correct arguments is not great, it will likely just panic lol. 
+### Issues
 
-**Additionally:** Since the `delete` and `update` function from a specific CommentID, I recommend running `list` for the particular Issue to view the comment IDs. Then copy the ID over for the comment you wish to delete/update.
+#### Retrieve content for a Jira Issue
 
-My goal is to eventually make it completely interactive to enable navigating through comments and performing add/update/delete on them.
-
-### Add Basic Text Comment to Issue
-
-```sh
-jirate add {IssueID} {short content}
+```sh 
+jirate issue get {IssueID}
 ```
 
-### Add Comment to Issue via Markdown Editor
+### Comments
+
+> **Note:** Since the `delete` and `update` function from a specific CommentID, I recommend running `list` for the particular Issue to view the comment IDs. Then copy the ID over for the comment you wish to delete/update.
+
+> My goal is to eventually make it completely interactive to enable navigating through comments and performing add/update/delete on them.
+
+#### Add Basic Text Comment to Issue
 
 ```sh
-jirate add {IssueID} md
+jirate comment add {IssueID} {short content}
 ```
 
-### List Comments for Issue By ID
+#### Add Comment to Issue via Markdown Editor
 
 ```sh
-jirate list {IssueID}
+jirate comment add {IssueID} md
 ```
 
-### Delete Comment
+#### List Comments for Issue By ID
 
 ```sh
-jirate delete {IssueID} {CommentID}
+jirate comment list {IssueID}
 ```
 
-### Update Comment
+#### Delete Comment
 
 ```sh
-jirate update {IssueID} {CommentID}
+jirate comment delete {IssueID} {CommentID}
+```
+
+#### Update Comment
+
+```sh
+jirate comment update {IssueID} {CommentID}
 ```

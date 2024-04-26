@@ -74,6 +74,18 @@ func NewClient() (Jira, error) {
 	return j, nil
 }
 
+func (j Jira) GetIssue(issueNumber string) (*jira.Issue, error) {
+	issue, _, err := j.client.Issue.Get(issueNumber, &jira.GetQueryOptions{
+		Expand: "renderedFields",
+	})
+
+	if err != nil {
+		return nil, nil
+	}
+
+	return issue, nil
+}
+
 func (j Jira) GetMyIssues() ([]jira.Issue, error) {
 	user, err := j.GetMyAccount()
 	if err != nil {

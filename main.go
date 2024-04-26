@@ -8,27 +8,40 @@ import (
 	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
+	"github.com/andygrunwald/go-jira"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/thaddeusrhatcher/jirate/editor"
-	"github.com/thaddeusrhatcher/jirate/jira"
+	j "github.com/thaddeusrhatcher/jirate/jira"
 	"github.com/thaddeusrhatcher/jirate/renderer"
 )
 
-var jiraClient *jira.Jira
+var jiraClient *j.Jira
 
 type action string
 
 const (
+	GetIssue      action = "issue"
 	AddComment    action = "add"
 	ListComments  action = "list"
 	DeleteComment action = "delete"
 	UpdateComment action = "update"
 )
 
-const prefix = `# Comment %s
+const commentPrefix = `# Comment %s
 > Author Email: %v *Created: %s*
+
+%s
+`
+const issuePrefix = `# Issue %s
+Summary: %s
+
+**Status: %s**
+
+> Author Email: %v
+> Assignee Email: %v
+> *Created: %s* *Updated: %s*
 
 %s
 `
@@ -78,7 +91,7 @@ func main() {
 		fmt.Println("Missing required arguments")
 		panic(err)
 	}
-	jiraClient, err := jira.NewClient()
+	jiraClient, err := j.NewClient()
 	if err != nil {
 		panic(err)
 	}
@@ -131,7 +144,7 @@ func main() {
 				panic(err)
 			}
 
-			full := fmt.Sprintf(prefix,
+			full := fmt.Sprintf(commentPrefix,
 				c.ID, c.Author.EmailAddress, c.Created, markdown)
 			out, err := glamour.Render(full, "dark")
 
@@ -167,7 +180,7 @@ func main() {
 
 		converter := md.NewConverter("", true, nil)
 		markdown, err := converter.ConvertString(comment.Body)
-		full := fmt.Sprintf(prefix,
+		full := fmt.Sprintf(commentPrefix,
 			comment.ID, comment.Author.EmailAddress, comment.Created, markdown)
 		out, err := glamour.Render(full, "dark")
 
@@ -204,10 +217,45 @@ func main() {
 			panic(err)
 		}
 		fmt.Println("Success!")
+	case GetIssue:
+		issue, err := jiraClient.GetIssue(args.issueNumber)
+
+		if err != nil {
+			panic(err)
+		}
+		RenderIssue(issue)
 	}
 }
 
-func listMyIssues(jiraClient jira.Jira) {
+func RenderIssue(issue *jira.Issue) {
+	converter := md.NewConverter("", true, &md.Options{LinkStyle: "referenced"})
+	markdown, err := converter.ConvertString(issue.RenderedFields.Description)
+	assignee := "Unassigned"
+	if issue.Fields.Assignee != nil {
+		assignee = issue.Fields.Assignee.EmailAddress
+	}
+	full := fmt.Sprintf(issuePrefix,
+		issue.Key,
+		issue.Fields.Summary,
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#26E092")).Bold(true).Render(issue.Fields.Status.Name),
+		issue.Fields.Creator.EmailAddress,
+		assignee,
+		issue.RenderedFields.Created,
+		issue.RenderedFields.Updated,
+		markdown,
+	)
+	out, err := glamour.Render(full, "dark")
+
+	if err != nil {
+		fmt.Println("Failed to render markdown with Glamour")
+		panic(err)
+	}
+
+	fmt.Println(commentStyle.Render(out))
+
+}
+
+func listMyIssues(jiraClient j.Jira) {
 	fmt.Println("Getting your In Progress issues")
 	issues, err := jiraClient.GetMyIssues()
 	if err != nil {

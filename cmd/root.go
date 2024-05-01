@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/thaddeusrhatcher/jirate/actions"
 	"github.com/thaddeusrhatcher/jirate/processor"
 )
 
@@ -36,12 +37,12 @@ var getCmd = &cobra.Command{
 		issueId := args[0]
 		switch cmd.Parent() {
 		case issueCmd:
-			processor := processor.NewIssueProcessor("get", issueId)
-			issues, err := processor.Process()
+			proc := processor.NewIssueProcessor(issueId)
+			issues, err := proc.Process(actions.Get)
 			if err != nil {
 				panic(err)
 			}
-			err = processor.Render(issues)
+			err = proc.Render(issues)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -66,8 +67,11 @@ var addCmd = &cobra.Command{
 		}
 		switch cmd.Parent() {
 		case commentCmd:
-			processor := processor.NewCommentProcessor("add", issueId, useMarkdown)
-			_, err := processor.Process(body)
+			proc := processor.NewCommentProcessorWithOptions(issueId, processor.ProcessorOptions{
+				UseMarkdown: useMarkdown,
+				CommentBody: body,
+			})
+			_, err := proc.Process(actions.Add)
 			if err != nil {
 				panic(err)
 			}
@@ -84,12 +88,12 @@ var listCmd = &cobra.Command{
 		issueId := args[0]
 		switch cmd.Parent() {
 		case commentCmd:
-			processor := processor.NewCommentProcessor("list", issueId, false)
-			comments, err := processor.Process("")
+			proc := processor.NewCommentProcessor(issueId)
+			comments, err := proc.Process(actions.List)
 			if err != nil {
 				fmt.Println("Failed to retrieve comments: ", err)
 			}
-			if err = processor.Render(comments); err != nil {
+			if err = proc.Render(comments); err != nil {
 				fmt.Println("Failed renderring comments: ", err)
 			}
 		default:
@@ -105,8 +109,12 @@ var deleteCmd = &cobra.Command{
 		commentId := args[1]
 		switch cmd.Parent() {
 		case commentCmd:
-			processor := processor.NewCommentProcessor("delete", issueId, false)
-			_, err := processor.Process(commentId)
+			proc := processor.NewCommentProcessorWithOptions(
+				issueId,
+				processor.ProcessorOptions{
+					CommentId: commentId,
+			})
+			_, err := proc.Process(actions.Delete)
 			if err != nil {
 				fmt.Println("Failed to delete comments: ", err)
 				return
@@ -122,17 +130,15 @@ var updateCmd = &cobra.Command{
 	Use: "update",
 	Run: func(cmd *cobra.Command, args []string) {
 		issueId := args[0]
-		useMarkdown := false
-		var body string
-		if args[1] == "md" {
-			useMarkdown = true
-		} else {
-			body = strings.Join(args[1:], " ")
-		}
 		switch cmd.Parent() {
 		case commentCmd:
-			processor := processor.NewCommentProcessor("update", issueId, useMarkdown)
-			_, err := processor.Process(body)
+			proc := processor.NewCommentProcessorWithOptions(
+				issueId,
+				processor.ProcessorOptions{
+					UseMarkdown: useMarkdown,
+				},
+			)
+			_, err := proc.Process(actions.Update)
 			if err != nil {
 				panic(err)
 			}

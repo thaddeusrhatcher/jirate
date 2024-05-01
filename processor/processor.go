@@ -11,9 +11,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/thaddeusrhatcher/jirate/actions"
 	"github.com/thaddeusrhatcher/jirate/editor"
 	myJira "github.com/thaddeusrhatcher/jirate/jira"
 	"github.com/thaddeusrhatcher/jirate/renderer"
+	"golang.org/x/net/html"
 )
 
 const commentPrefix = `# Comment %s
@@ -33,16 +35,6 @@ Summary: %s
 %s
 `
 
-type Action string
-
-const (
-	ActionGet    Action = "get"
-	ActionAdd    Action = "add"
-	ActionList   Action = "list"
-	ActionDelete Action = "delete"
-	ActionUpdate Action = "update"
-)
-
 type Processor interface {
 	Process() error
 	Render() error
@@ -54,21 +46,19 @@ type issueStyles struct {
 }
 
 type IssueProcessor struct {
-	action      Action
 	issueId     string
 	mdConverter *md.Converter
 	styles      issueStyles
 	jiraClient  *myJira.Jira
 }
 
-func NewIssueProcessor(action string, issueId string) IssueProcessor {
+func NewIssueProcessor(issueId string) IssueProcessor {
 	jiraClient, err := myJira.NewClient()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	return IssueProcessor{
-		action:      Action(action),
 		issueId:     issueId,
 		jiraClient:  &jiraClient,
 		mdConverter: md.NewConverter("", true, &md.Options{LinkStyle: "referenced"}),
@@ -83,9 +73,9 @@ func NewIssueProcessor(action string, issueId string) IssueProcessor {
 	}
 }
 
-func (p IssueProcessor) Process() ([]*jira.Issue, error) {
-	switch p.action {
-	case ActionGet:
+func (p IssueProcessor) Process(action actions.Action) ([]*jira.Issue, error) {
+	switch action {
+	case actions.Get:
 		issue, err := p.jiraClient.GetIssue(p.issueId)
 		if err != nil {
 			return nil, err
@@ -131,69 +121,94 @@ type commentStyles struct {
 	status    lipgloss.Style
 }
 
+type ProcessorOptions struct {
+	UseMarkdown bool
+	CommentId   string
+	CommentBody string
+}
+
 type CommentProcessor struct {
-	issueId     string
-	commentId   string
-	action      Action
-	useMarkdown bool
+	IssueId     string
+	CommentId   string
+	UseMarkdown bool
+	CommentBody string
+
 	mdConverter *md.Converter
 	styles      commentStyles
 	jiraClient  myJira.Jira
 }
 
-func NewCommentProcessor(action, issueId string, useMarkdown bool) CommentProcessor {
+func NewCommentProcessor(issueId string) *CommentProcessor {
 	jiraClient, err := myJira.NewClient()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	return CommentProcessor{
-		action:      Action(action),
-		issueId:     issueId,
-		useMarkdown: useMarkdown,
+	p := &CommentProcessor{
+		IssueId:     issueId,
+		UseMarkdown: false,
 		jiraClient:  jiraClient,
-		mdConverter: md.NewConverter("", true, &md.Options{LinkStyle: "referenced"}),
+		mdConverter: md.NewConverter("", true, &md.Options{
+			LinkReferenceStyle: "shortcut",
+			LinkStyle:          "inlined",
+		}),
 		styles: commentStyles{
 			container: lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(lipgloss.Color("63")),
 		},
 	}
+
+	return p
 }
 
-func (p CommentProcessor) Process(body string) ([]*jira.Comment, error) {
-	switch p.action {
-	case ActionAdd:
-		if p.useMarkdown {
+func NewCommentProcessorWithOptions(issueId string, options ProcessorOptions) *CommentProcessor {
+	p := NewCommentProcessor(issueId)
+	if options.UseMarkdown {
+		p.UseMarkdown = true
+	}
+	if options.CommentId != "" {
+		p.CommentId = options.CommentId
+	}
+	if options.CommentBody != "" {
+		p.CommentBody = options.CommentBody
+	}
+	return p
+}
+
+func (p CommentProcessor) Process(action actions.Action) ([]*jira.Comment, error) {
+	switch action {
+	case actions.Add:
+		if p.UseMarkdown {
 			err := p.AddMarkdown()
 			return nil, err
 		}
-		err := p.AddBasic(body)
+		err := p.AddBasic(p.CommentBody)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to add comment for issue %s:\n%s", p.issueId, err)
+			return nil, fmt.Errorf("Failed to add comment for issue %s:\n%s", p.IssueId, err)
 		}
 		return nil, nil
-	case ActionList:
-		comments, err := p.jiraClient.GetComments(p.issueId)
+	case actions.List:
+		comments, err := p.jiraClient.GetComments(p.IssueId)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to retrieve comments for issue %s:\n%s", p.issueId, err)
+			return nil, fmt.Errorf("Failed to retrieve comments for issue %s:\n%s", p.IssueId, err)
 		}
 		return comments, nil
-	case ActionDelete:
-		fmt.Printf("Deleting comment %s for issue %s.\n", body, p.issueId)
-		err := p.jiraClient.DeleteComment(p.issueId, body)
+	case actions.Delete:
+		fmt.Printf("Deleting comment %s for issue %s.\n", p.CommentId, p.IssueId)
+		err := p.jiraClient.DeleteComment(p.IssueId, p.CommentId)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to delete comment %s in issue %s:\n%s", p.commentId, p.issueId, err)
+			return nil, fmt.Errorf("Failed to delete comment %s in issue %s:\n%s", p.CommentId, p.IssueId, err)
 		}
 		return nil, nil
-	case ActionUpdate:
-		comment, err := p.jiraClient.GetComment(p.issueId, body)
+	case actions.Update:
+		comment, err := p.jiraClient.GetComment(p.IssueId, p.CommentId)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get comment %s in issue %s:\n%s", body, p.issueId, err)
+			return nil, fmt.Errorf("Failed to get comment %s in issue %s:\n%s", p.CommentId, p.IssueId, err)
 		}
 		if err = p.UpdateMarkdown(comment); err != nil {
 			return nil, fmt.Errorf(
-				"Failed to update comment %s in issue %s:\n%s", body, p.issueId, err)
+				"Failed to update comment %s in issue %s:\n%s", p.CommentBody, p.IssueId, err)
 		}
 		return nil, nil
 	}
@@ -223,7 +238,7 @@ func (p CommentProcessor) Render(comments []*jira.Comment) error {
 }
 
 func (p CommentProcessor) AddBasic(body string) error {
-	err := p.jiraClient.AddComment(p.issueId, body)
+	err := p.jiraClient.AddComment(p.IssueId, body)
 	if err != nil {
 		fmt.Println("Failed to create comment.")
 		return err
@@ -248,7 +263,7 @@ func (p CommentProcessor) AddMarkdown() error {
 		fmt.Println("Failed to render ADF from content.")
 		return err
 	}
-	err = p.jiraClient.AddCommentCustom(p.issueId, buffer.Bytes())
+	err = p.jiraClient.AddCommentCustom(p.IssueId, buffer.Bytes())
 	if err != nil {
 		fmt.Println("Failed to create md comment.")
 		panic(err)
@@ -277,9 +292,25 @@ func (p CommentProcessor) UpdateMarkdown(comment *jira.Comment) error {
 	if err != nil {
 		return fmt.Errorf("Failed to render ADF from content: %v", err)
 	}
-	err = p.jiraClient.UpdateCommentCustom(p.issueId, comment.ID, buffer.Bytes())
+	err = p.jiraClient.UpdateCommentCustom(p.IssueId, comment.ID, buffer.Bytes())
 	if err != nil {
 		return fmt.Errorf("Failed to create md comment: %v", err)
 	}
 	return nil
+}
+
+func getMaxLengthHtml(node *html.Node, max int, str string) (int, string) {
+	if node.Type == html.ElementNode && node.Data == "a" {
+		for _, a := range node.Attr {
+			if len(a.Val) > max {
+				max = len(a.Val)
+				str = a.Val
+			}
+			break
+		}
+	}
+	for c := node.FirstChild; c != nil; c = c.NextSibling {
+		max, str = getMaxLengthHtml(c, max, str)
+	}
+	return max, str
 }

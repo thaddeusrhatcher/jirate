@@ -157,31 +157,6 @@ func (j Jira) GetComment(issueNumber, commentId string) (*jira.Comment, error) {
 	b, err := json.Marshal(rawComment)
 	err = json.Unmarshal(b, comment)
 	comment.Body = rawComment["renderedBody"].(string)
-
-	if false {
-		author, ok := rawComment["author"].(map[string]any)
-		if !ok {
-			return nil, errors.New("Missing 'author' in response body")
-		}
-		accountId := author["accountId"].(string)
-		emailAddress := author["emailAddress"].(string)
-		displayName := author["displayName"].(string)
-		selfLink := author["selfLink"].(string)
-		comment.Author = jira.User{
-			AccountID:    accountId,
-			EmailAddress: emailAddress,
-			DisplayName:  displayName,
-			Self:         selfLink,
-		}
-		selfLink = rawComment["self"].(string)
-		created := rawComment["created"].(string)
-		updated := rawComment["updated"].(string)
-		id := rawComment["id"].(string)
-		comment.Self = selfLink
-		comment.Created = created
-		comment.Updated = updated
-		comment.ID = id
-	}
 	return comment, nil
 }
 

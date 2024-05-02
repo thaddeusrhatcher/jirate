@@ -66,6 +66,27 @@ The following are the current commands supported.
 jirate issue get {IssueID}
 ```
 
+#### List Jira issues status
+
+Retrieves all issues with a given `status` from the current active sprint of the projects main board.
+
+
+```sh
+jirate issue list --status {Status Name} --project {Project Key}
+```
+
+Flags
+* Status (option, default `"In Progress"`): `--status` or `-S` The status of the stories.
+* Project (required): `--project` or `-P` The key of the project.
+
+If a {Status Name} contains spaces, wrap in double quotes (`"status name"`).
+
+This currently works via the following steps:
+1. Retrieve project.
+2. Get all boards for `project`, currently limits to 1 via `maxResults` query param.
+3. Get the active sprint for the board
+4. Get issues from that sprint with the matching `status`.
+
 ### Comments
 
 > **Note:** Since the `delete` and `update` function from a specific CommentID, I recommend running `list` for the particular Issue to view the comment IDs. Then copy the ID over for the comment you wish to delete/update.

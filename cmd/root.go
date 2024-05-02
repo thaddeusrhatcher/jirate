@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 var verbose bool
 var issueNumber string
 var useMarkdown bool
+var status string
 
 var rootCmd = &cobra.Command{
 	Use: "jirate",
@@ -83,11 +85,21 @@ var addCmd = &cobra.Command{
 }
 
 var listCmd = &cobra.Command{
-	Use: "list",
+	Use:  "list",
 	Run: func(cmd *cobra.Command, args []string) {
-		issueId := args[0]
+		status, errS := cmd.Flags().GetString("status")
+		project, errP := cmd.Flags().GetString("project")
+		err := errors.Join(errS, errP)
+		if err != nil {
+			fmt.Println("Failed parsing flags")
+			panic(err)
+		} else if project == "" {
+			fmt.Println("Bad command: Project must be provided.")
+			return
+		}
 		switch cmd.Parent() {
 		case commentCmd:
+			issueId := args[0]
 			proc := processor.NewCommentProcessor(issueId)
 			comments, err := proc.Process(actions.List)
 			if err != nil {
@@ -95,6 +107,20 @@ var listCmd = &cobra.Command{
 			}
 			if err = proc.Render(comments); err != nil {
 				fmt.Println("Failed renderring comments: ", err)
+			}
+		case issueCmd:
+			proc := processor.NewIssueProcessorWithOptions(
+				processor.ProcessorOptions{
+					Status: status,
+					Project: project,
+				},
+			)
+			issues, err := proc.Process(actions.List)
+			if err != nil {
+				fmt.Println("Failed to retrieve issues: ", err)
+			}
+			if err = proc.Render(issues); err != nil {
+				fmt.Println("Failed rendering issues: ", err)
 			}
 		default:
 			fmt.Println("Command unsupported")
@@ -113,7 +139,7 @@ var deleteCmd = &cobra.Command{
 				issueId,
 				processor.ProcessorOptions{
 					CommentId: commentId,
-			})
+				})
 			_, err := proc.Process(actions.Delete)
 			if err != nil {
 				fmt.Println("Failed to delete comments: ", err)
@@ -151,6 +177,9 @@ var updateCmd = &cobra.Command{
 
 func NewRoot() *cobra.Command {
 	addCmd.Flags().Bool("md", false, "Whether to use markdown editor")
+	listCmd.PersistentFlags().StringP("status", "S", "In Progress", "")
+	listCmd.PersistentFlags().StringP("assignee", "A", "", "")
+	listCmd.PersistentFlags().StringP("project", "P", "", "")
 	commentCmd.AddCommand(getCmd)
 	commentCmd.AddCommand(listCmd)
 	commentCmd.AddCommand(addCmd)
@@ -158,6 +187,7 @@ func NewRoot() *cobra.Command {
 	commentCmd.AddCommand(deleteCmd)
 
 	issueCmd.AddCommand(getCmd)
+	issueCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(issueCmd)
 	rootCmd.AddCommand(commentCmd)
 	return rootCmd

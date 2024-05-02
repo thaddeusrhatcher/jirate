@@ -50,6 +50,8 @@ type IssueProcessor struct {
 	mdConverter *md.Converter
 	styles      issueStyles
 	jiraClient  *myJira.Jira
+	status      string
+	project     string
 }
 
 func NewIssueProcessor(issueId string) IssueProcessor {
@@ -73,19 +75,39 @@ func NewIssueProcessor(issueId string) IssueProcessor {
 	}
 }
 
-func (p IssueProcessor) Process(action actions.Action) ([]*jira.Issue, error) {
+func NewIssueProcessorWithOptions(options ProcessorOptions) IssueProcessor {
+	p := NewIssueProcessor(options.IssueId)
+	if options.Status != "" {
+		p.status = options.Status
+	}
+	if options.Project != "" {
+		p.project = options.Project
+	}
+	return p
+}
+
+func (p IssueProcessor) Process(action actions.Action) ([]jira.Issue, error) {
 	switch action {
 	case actions.Get:
 		issue, err := p.jiraClient.GetIssue(p.issueId)
 		if err != nil {
 			return nil, err
+		} else if issue == nil {
+			return nil, errors.New("Issues was nil")
 		}
-		return []*jira.Issue{issue}, nil
+		return []jira.Issue{*issue}, nil
+	case actions.List:
+		options := myJira.IssueSearchOptions{
+			Status: p.status,
+			Project: p.project,
+		}
+		issues, err := p.jiraClient.GetIssues(options)
+		return issues, err
 	}
 	return nil, nil
 }
 
-func (p IssueProcessor) Render(issues []*jira.Issue) error {
+func (p IssueProcessor) Render(issues []jira.Issue) error {
 	for _, issue := range issues {
 		converter := md.NewConverter("", true, &md.Options{LinkStyle: "referenced"})
 		markdown, err := converter.ConvertString(issue.RenderedFields.Description)
@@ -111,7 +133,6 @@ func (p IssueProcessor) Render(issues []*jira.Issue) error {
 		}
 
 		fmt.Println(p.styles.container.Render(out))
-
 	}
 	return nil
 }
@@ -122,7 +143,10 @@ type commentStyles struct {
 }
 
 type ProcessorOptions struct {
+	Project     string
 	UseMarkdown bool
+	IssueId     string
+	Status      string
 	CommentId   string
 	CommentBody string
 }
@@ -155,6 +179,10 @@ func NewCommentProcessor(issueId string) *CommentProcessor {
 		styles: commentStyles{
 			container: lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
+				BorderLeft(false).
+				BorderTop(false).
+				BorderBottom(true).
+				BorderRight(false).
 				BorderForeground(lipgloss.Color("63")),
 		},
 	}

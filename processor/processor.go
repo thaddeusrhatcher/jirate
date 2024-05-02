@@ -179,10 +179,6 @@ func NewCommentProcessor(issueId string) *CommentProcessor {
 		styles: commentStyles{
 			container: lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
-				BorderLeft(false).
-				BorderTop(false).
-				BorderBottom(true).
-				BorderRight(false).
 				BorderForeground(lipgloss.Color("63")),
 		},
 	}

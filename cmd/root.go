@@ -120,7 +120,7 @@ var listCmd = &cobra.Command{
 			if err != nil {
 				fmt.Println("Failed to retrieve issues: ", err)
 			}
-			if err = proc.Render(issues); err != nil {
+			if err = proc.RenderShort(issues); err != nil {
 				fmt.Println("Failed rendering issues: ", err)
 			}
 		default:

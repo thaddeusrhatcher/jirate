@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/andygrunwald/go-jira"
@@ -67,9 +68,8 @@ func NewIssueProcessor(issueId string) IssueProcessor {
 		styles: issueStyles{
 			container: lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
-				BorderForeground(lipgloss.Color("#F44674")),
+				BorderForeground(lipgloss.Color("63")),
 			status: lipgloss.NewStyle().
-				Foreground(lipgloss.Color("")).
 				Bold(true),
 		},
 	}
@@ -98,7 +98,7 @@ func (p IssueProcessor) Process(action actions.Action) ([]jira.Issue, error) {
 		return []jira.Issue{*issue}, nil
 	case actions.List:
 		options := myJira.IssueSearchOptions{
-			Status: p.status,
+			Status:  p.status,
 			Project: p.project,
 		}
 		issues, err := p.jiraClient.GetIssues(options)
@@ -133,6 +133,79 @@ func (p IssueProcessor) Render(issues []jira.Issue) error {
 		}
 
 		fmt.Println(p.styles.container.Render(out))
+	}
+	return nil
+}
+
+func GetNameAbbrev(fullName string) string {
+	split := strings.Split(fullName, " ")
+	return string(split[0][0]) + string(split[len(split)-1][0])
+}
+
+func PrintLipglossColors() {
+	for i := 0; i < 1000; i++ {
+		str := fmt.Sprint(i)
+		fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color(str)).Render(str))
+	}
+}
+
+func SelectIssueTypeColor(issueType string) lipgloss.Color {
+	switch issueType {
+	case "Bug":
+		return lipgloss.Color("964")
+	case "Chore":
+		return lipgloss.Color("781")
+	case "Story":
+		return lipgloss.Color("50")
+	default:
+		return lipgloss.Color("50")
+	}
+}
+
+func (p IssueProcessor) RenderShort(issues []jira.Issue) error {
+	keyStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("87")).
+		Bold(true).
+		PaddingLeft(1).
+		PaddingRight(1)
+	typeStyle := lipgloss.NewStyle().
+		PaddingLeft(1)
+	summaryStyle := lipgloss.NewStyle()
+	statusStyle := p.styles.status
+	assigneeStyle := lipgloss.NewStyle().
+		PaddingRight(1)
+	for _, issue := range issues {
+		key := keyStyle.Render(issue.Key)
+		// 50 (container width) - 2 (left/right pads) - issueType length - status length
+		pad := (48 - 2 - len(issue.Fields.Type.Name) - len(issue.Fields.Status.Name)) / 2
+		issueType := typeStyle.
+			Foreground(SelectIssueTypeColor(issue.Fields.Type.Name)).
+			Render(issue.Fields.Type.Name)
+		status := statusStyle.
+			PaddingRight(pad).
+			PaddingLeft(pad).
+			Render(issue.Fields.Status.Name)
+		assignee := assigneeStyle.
+			Foreground(lipgloss.Color("999")).
+			Render("UA")
+		if issue.Fields.Assignee != nil {
+			assignee = assigneeStyle.
+				Foreground(lipgloss.Color("933")).
+				Render(
+					GetNameAbbrev(issue.Fields.Assignee.DisplayName),
+				)
+		}
+		// Container width is 50 and "..." consumes 3 spaces
+		maxWidth := 50 - lipgloss.Width(key) - 3
+		if len(issue.Fields.Summary) > maxWidth {
+			issue.Fields.Summary = issue.Fields.Summary[:maxWidth] + "..."
+		}
+		summary := summaryStyle.
+			Render(issue.Fields.Summary)
+		lower := fmt.Sprintf("%s%s%s", issueType, status, assignee)
+		upper := lipgloss.JoinHorizontal(lipgloss.Left, key, summary)
+		body := lipgloss.JoinVertical(lipgloss.Left, upper, lower)
+		fmt.Println(p.styles.container.Width(50).Render(body))
 	}
 	return nil
 }

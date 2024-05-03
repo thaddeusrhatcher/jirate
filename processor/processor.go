@@ -44,6 +44,10 @@ type Processor interface {
 type issueStyles struct {
 	container lipgloss.Style
 	status    lipgloss.Style
+	key       lipgloss.Style
+	iType     lipgloss.Style
+	summary   lipgloss.Style
+	assignee  lipgloss.Style
 }
 
 type IssueProcessor struct {
@@ -69,8 +73,17 @@ func NewIssueProcessor(issueId string) IssueProcessor {
 			container: lipgloss.NewStyle().
 				BorderStyle(lipgloss.NormalBorder()).
 				BorderForeground(lipgloss.Color("63")),
+			key: lipgloss.NewStyle().
+				Foreground(lipgloss.Color("87")).
+				Bold(true).
+				PaddingLeft(1).
+				PaddingRight(1),
+			summary: lipgloss.NewStyle(),
+			iType: lipgloss.NewStyle().
+				PaddingLeft(1),
 			status: lipgloss.NewStyle().
 				Bold(true),
+			assignee: lipgloss.NewStyle().Foreground(lipgloss.Color("999")),
 		},
 	}
 }
@@ -163,33 +176,21 @@ func SelectIssueTypeColor(issueType string) lipgloss.Color {
 }
 
 func (p IssueProcessor) RenderShort(issues []jira.Issue) error {
-	keyStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("87")).
-		Bold(true).
-		PaddingLeft(1).
-		PaddingRight(1)
-	typeStyle := lipgloss.NewStyle().
-		PaddingLeft(1)
-	summaryStyle := lipgloss.NewStyle()
-	statusStyle := p.styles.status
-	assigneeStyle := lipgloss.NewStyle().
-		PaddingRight(1)
 	for _, issue := range issues {
-		key := keyStyle.Render(issue.Key)
+		key := p.styles.key.Render(issue.Key)
 		// 50 (container width) - 2 (left/right pads) - issueType length - status length
 		pad := (48 - 2 - len(issue.Fields.Type.Name) - len(issue.Fields.Status.Name)) / 2
-		issueType := typeStyle.
+		issueType := p.styles.iType.
 			Foreground(SelectIssueTypeColor(issue.Fields.Type.Name)).
 			Render(issue.Fields.Type.Name)
-		status := statusStyle.
+		status := p.styles.status.
 			PaddingRight(pad).
 			PaddingLeft(pad).
 			Render(issue.Fields.Status.Name)
-		assignee := assigneeStyle.
-			Foreground(lipgloss.Color("999")).
+		assignee := p.styles.assignee.
 			Render("UA")
 		if issue.Fields.Assignee != nil {
-			assignee = assigneeStyle.
+			assignee = p.styles.assignee.
 				Foreground(lipgloss.Color("933")).
 				Render(
 					GetNameAbbrev(issue.Fields.Assignee.DisplayName),
@@ -200,7 +201,7 @@ func (p IssueProcessor) RenderShort(issues []jira.Issue) error {
 		if len(issue.Fields.Summary) > maxWidth {
 			issue.Fields.Summary = issue.Fields.Summary[:maxWidth] + "..."
 		}
-		summary := summaryStyle.
+		summary := p.styles.summary.
 			Render(issue.Fields.Summary)
 		lower := fmt.Sprintf("%s%s%s", issueType, status, assignee)
 		upper := lipgloss.JoinHorizontal(lipgloss.Left, key, summary)

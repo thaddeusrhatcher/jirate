@@ -57,6 +57,7 @@ type IssueProcessor struct {
 	jiraClient  *myJira.Jira
 	status      string
 	project     string
+	verbose bool
 }
 
 func NewIssueProcessor(issueId string) IssueProcessor {
@@ -96,6 +97,7 @@ func NewIssueProcessorWithOptions(options ProcessorOptions) IssueProcessor {
 	if options.Project != "" {
 		p.project = options.Project
 	}
+	p.verbose = options.Verbose
 	return p
 }
 
@@ -121,6 +123,13 @@ func (p IssueProcessor) Process(action actions.Action) ([]jira.Issue, error) {
 }
 
 func (p IssueProcessor) Render(issues []jira.Issue) error {
+	if p.verbose {
+		return p.renderVerbose(issues)
+	}
+	return p.renderShort(issues)
+}
+
+func (p IssueProcessor) renderVerbose(issues []jira.Issue) error {
 	for _, issue := range issues {
 		converter := md.NewConverter("", true, &md.Options{LinkStyle: "referenced"})
 		markdown, err := converter.ConvertString(issue.RenderedFields.Description)
@@ -175,7 +184,7 @@ func SelectIssueTypeColor(issueType string) lipgloss.Color {
 	}
 }
 
-func (p IssueProcessor) RenderShort(issues []jira.Issue) error {
+func (p IssueProcessor) renderShort(issues []jira.Issue) error {
 	for _, issue := range issues {
 		key := p.styles.key.Render(issue.Key)
 		// 50 (container width) - 2 (left/right pads) - issueType length - status length
@@ -223,6 +232,7 @@ type ProcessorOptions struct {
 	Status      string
 	CommentId   string
 	CommentBody string
+	Verbose bool
 }
 
 type CommentProcessor struct {

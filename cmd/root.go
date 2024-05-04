@@ -39,7 +39,12 @@ var getCmd = &cobra.Command{
 		issueId := args[0]
 		switch cmd.Parent() {
 		case issueCmd:
-			proc := processor.NewIssueProcessor(issueId)
+			proc := processor.NewIssueProcessorWithOptions(
+				processor.ProcessorOptions{
+					IssueId: issueId,
+					Verbose: true,
+				},
+			)
 			issues, err := proc.Process(actions.Get)
 			if err != nil {
 				panic(err)
@@ -89,7 +94,8 @@ var listCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		status, errS := cmd.Flags().GetString("status")
 		project, errP := cmd.Flags().GetString("project")
-		err := errors.Join(errS, errP)
+		verbose, errV := cmd.Flags().GetBool("verbose")
+		err := errors.Join(errS, errP, errV)
 		if err != nil {
 			fmt.Println("Failed parsing flags: ", err.Error())
 			return
@@ -114,13 +120,14 @@ var listCmd = &cobra.Command{
 				processor.ProcessorOptions{
 					Status:  status,
 					Project: project,
+					Verbose: verbose,
 				},
 			)
 			issues, err := proc.Process(actions.List)
 			if err != nil {
 				fmt.Println("Failed to retrieve issues: ", err)
 			}
-			if err = proc.RenderShort(issues); err != nil {
+			if err = proc.Render(issues); err != nil {
 				fmt.Println("Failed rendering issues: ", err)
 			}
 		default:
@@ -178,9 +185,10 @@ var updateCmd = &cobra.Command{
 
 func NewRoot() *cobra.Command {
 	addCmd.Flags().Bool("md", false, "Whether to use markdown editor")
-	listCmd.PersistentFlags().StringP("status", "S", "In Progress", "")
-	listCmd.PersistentFlags().StringP("assignee", "A", "", "")
-	listCmd.PersistentFlags().StringP("project", "P", "", "")
+	listCmd.PersistentFlags().StringP("status", "S", "In Progress", "Issue status")
+	listCmd.PersistentFlags().StringP("assignee", "A", "", "Assignee email")
+	listCmd.PersistentFlags().StringP("project", "P", "", "Jira project")
+	listCmd.PersistentFlags().BoolP("verbose", "V", false, "Show full issue.")
 	listCommentCmd := *listCmd
 	listIssueCmd := *listCmd
 	commentCmd.AddCommand(getCmd)

@@ -57,7 +57,7 @@ type IssueProcessor struct {
 	jiraClient  *myJira.Jira
 	status      string
 	project     string
-	verbose bool
+	verbose     bool
 }
 
 func NewIssueProcessor(issueId string) IssueProcessor {
@@ -118,6 +118,19 @@ func (p IssueProcessor) Process(action actions.Action) ([]jira.Issue, error) {
 		}
 		issues, err := p.jiraClient.GetIssues(options)
 		return issues, err
+	case actions.Update:
+		transitions, err := p.jiraClient.GetTransitions(p.issueId)
+		if err != nil {
+			return nil, err
+		}
+		
+		for _, t := range transitions {
+			if t.To.Name == p.status {
+				err := p.jiraClient.UpdateIssue(p.issueId, t)
+				return nil, err
+			}
+		}
+		return nil, fmt.Errorf("Transition to status %s not supported.", p.status)
 	}
 	return nil, nil
 }
@@ -232,7 +245,7 @@ type ProcessorOptions struct {
 	Status      string
 	CommentId   string
 	CommentBody string
-	Verbose bool
+	Verbose     bool
 }
 
 type CommentProcessor struct {

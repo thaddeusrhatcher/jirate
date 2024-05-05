@@ -87,6 +87,10 @@ This currently works via the following steps:
 3. Get the active sprint for the board
 4. Get issues from that sprint with the matching `status`.
 
+```sh
+jirate issue update {IssueId} --set-status {Status}
+```
+
 ### Comments
 
 > **Note:** Since the `delete` and `update` function from a specific CommentID, I recommend running `list` for the particular Issue to view the comment IDs. Then copy the ID over for the comment you wish to delete/update.

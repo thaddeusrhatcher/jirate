@@ -201,6 +201,21 @@ func (j Jira) GetMyAccount() (*jira.User, error) {
 	return user, err
 }
 
+func (j Jira) GetStatuses() ([]jira.Status, error) {
+	statuses, _, err := j.client.Status.GetAllStatuses()
+	return statuses, err
+}
+
+func (j Jira) GetTransitions(issueId string) ([]jira.Transition, error) {
+	transitions, _, err := j.client.Issue.GetTransitions(issueId)
+	return transitions, err
+}
+
+func (j Jira) UpdateIssue(issueId string, transition jira.Transition) error {
+	_, err := j.client.Issue.DoTransition(issueId, transition.ID)
+	return err
+}
+
 func (j Jira) GetComments(issueNumber string) ([]*jira.Comment, error) {
 	issue, _, err := j.client.Issue.Get(issueNumber, &jira.GetQueryOptions{
 		Expand: "renderedFields",

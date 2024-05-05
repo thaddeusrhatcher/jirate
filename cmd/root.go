@@ -47,7 +47,7 @@ var getCmd = &cobra.Command{
 			)
 			issues, err := proc.Process(actions.Get)
 			if err != nil {
-				panic(err)
+				fmt.Println(err)
 			}
 			err = proc.Render(issues)
 			if err != nil {
@@ -80,7 +80,7 @@ var addCmd = &cobra.Command{
 			})
 			_, err := proc.Process(actions.Add)
 			if err != nil {
-				panic(err)
+				fmt.Println(err)
 			}
 			fmt.Println("Success!")
 		default:
@@ -98,7 +98,6 @@ var listCmd = &cobra.Command{
 		err := errors.Join(errS, errP, errV)
 		if err != nil {
 			fmt.Println("Failed parsing flags: ", err.Error())
-			return
 		}
 		switch cmd.Parent() {
 		case commentCmd:
@@ -114,8 +113,8 @@ var listCmd = &cobra.Command{
 		case issueCmd:
 			if project == "" {
 				fmt.Println("Bad command: Project must be provided.")
-				return
 			}
+			fmt.Println("verbose: ", verbose)
 			proc := processor.NewIssueProcessorWithOptions(
 				processor.ProcessorOptions{
 					Status:  status,
@@ -151,7 +150,6 @@ var deleteCmd = &cobra.Command{
 			_, err := proc.Process(actions.Delete)
 			if err != nil {
 				fmt.Println("Failed to delete comments: ", err)
-				return
 			}
 			fmt.Println("Success!")
 		default:
@@ -174,7 +172,22 @@ var updateCmd = &cobra.Command{
 			)
 			_, err := proc.Process(actions.Update)
 			if err != nil {
-				panic(err)
+				fmt.Println(err)
+			}
+			fmt.Println("Success!")
+		case issueCmd:
+			status, err := cmd.Flags().GetString("set-status")
+			if err != nil {
+				fmt.Println("Failed parsing status flag.")
+			}
+			proc := processor.NewIssueProcessorWithOptions(
+				processor.ProcessorOptions{
+					IssueId: issueId,
+					Status:  status,
+				},
+			)
+			if _, err = proc.Process(actions.Update); err != nil {
+				fmt.Println(err)
 			}
 			fmt.Println("Success!")
 		default:
@@ -185,20 +198,27 @@ var updateCmd = &cobra.Command{
 
 func NewRoot() *cobra.Command {
 	addCmd.Flags().Bool("md", false, "Whether to use markdown editor")
-	listCmd.PersistentFlags().StringP("status", "S", "In Progress", "Issue status")
-	listCmd.PersistentFlags().StringP("assignee", "A", "", "Assignee email")
-	listCmd.PersistentFlags().StringP("project", "P", "", "Jira project")
-	listCmd.PersistentFlags().BoolP("verbose", "V", false, "Show full issue.")
+
 	listCommentCmd := *listCmd
 	listIssueCmd := *listCmd
+	listIssueCmd.PersistentFlags().StringP("assignee", "A", "", "Assignee email")
+	listIssueCmd.PersistentFlags().StringP("status", "S", "In Progress", "Issue status")
+	listIssueCmd.PersistentFlags().StringP("project", "P", "", "Jira project")
+	listIssueCmd.PersistentFlags().BoolP("verbose", "V", false, "Show full issue.")
+
+	updateCommentCmd := *updateCmd
+	updateIssueCmd := *updateCmd
+	updateIssueCmd.PersistentFlags().StringP("set-status", "", "", "Destination status for issue.")
+
 	commentCmd.AddCommand(getCmd)
 	commentCmd.AddCommand(&listCommentCmd)
 	commentCmd.AddCommand(addCmd)
-	commentCmd.AddCommand(updateCmd)
+	commentCmd.AddCommand(&updateCommentCmd )
 	commentCmd.AddCommand(deleteCmd)
 
 	issueCmd.AddCommand(getCmd)
 	issueCmd.AddCommand(&listIssueCmd)
+	issueCmd.AddCommand(&updateIssueCmd )
 	rootCmd.AddCommand(issueCmd)
 	rootCmd.AddCommand(commentCmd)
 	return rootCmd

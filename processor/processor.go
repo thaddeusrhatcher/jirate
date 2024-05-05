@@ -16,6 +16,7 @@ import (
 	"github.com/thaddeusrhatcher/jirate/editor"
 	myJira "github.com/thaddeusrhatcher/jirate/jira"
 	"github.com/thaddeusrhatcher/jirate/renderer"
+	"github.com/thaddeusrhatcher/jirate/selector"
 	"golang.org/x/net/html"
 )
 
@@ -119,18 +120,35 @@ func (p IssueProcessor) Process(action actions.Action) ([]jira.Issue, error) {
 		issues, err := p.jiraClient.GetIssues(options)
 		return issues, err
 	case actions.Update:
+		var selectedTransition selector.Transition
 		transitions, err := p.jiraClient.GetTransitions(p.issueId)
 		if err != nil {
 			return nil, err
 		}
-		
-		for _, t := range transitions {
-			if t.To.Name == p.status {
-				err := p.jiraClient.UpdateIssue(p.issueId, t)
+		if p.status == "" {
+			program := tea.NewProgram(selector.InitialModel(&transitions))
+			if _, err := program.Run(); err != nil {
 				return nil, err
 			}
+			if selector.Quit || selector.SelectedTransition.Id == "" {
+				fmt.Println("Selector cancelled. Exiting...")
+				os.Exit(1)
+			}
+			selectedTransition = selector.SelectedTransition
+		} else {
+			for _, t := range transitions {
+				if t.Name == p.status {
+					selectedTransition = selector.Transition{
+						Id: t.ID,
+						Name: t.Name,
+					}
+					break
+				}
+			}
 		}
-		return nil, fmt.Errorf("Transition to status %s not supported.", p.status)
+		fmt.Printf("Updating %s status to %s (ID: %s)\n", p.issueId, selectedTransition.Name, selectedTransition.Id)
+		err = p.jiraClient.UpdateIssue(p.issueId, selectedTransition.Id)
+		return nil, err
 	}
 	return nil, nil
 }

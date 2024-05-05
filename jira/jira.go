@@ -211,8 +211,8 @@ func (j Jira) GetTransitions(issueId string) ([]jira.Transition, error) {
 	return transitions, err
 }
 
-func (j Jira) UpdateIssue(issueId string, transition jira.Transition) error {
-	_, err := j.client.Issue.DoTransition(issueId, transition.ID)
+func (j Jira) UpdateIssue(issueId string, transitionId string) error {
+	_, err := j.client.Issue.DoTransition(issueId, transitionId)
 	return err
 }
 

@@ -114,7 +114,6 @@ var listCmd = &cobra.Command{
 			if project == "" {
 				fmt.Println("Bad command: Project must be provided.")
 			}
-			fmt.Println("verbose: ", verbose)
 			proc := processor.NewIssueProcessorWithOptions(
 				processor.ProcessorOptions{
 					Status:  status,

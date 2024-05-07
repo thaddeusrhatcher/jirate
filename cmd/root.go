@@ -92,13 +92,7 @@ var addCmd = &cobra.Command{
 var listCmd = &cobra.Command{
 	Use: "list",
 	Run: func(cmd *cobra.Command, args []string) {
-		status, errS := cmd.Flags().GetString("status")
-		project, errP := cmd.Flags().GetString("project")
-		verbose, errV := cmd.Flags().GetBool("verbose")
-		err := errors.Join(errS, errP, errV)
-		if err != nil {
-			fmt.Println("Failed parsing flags: ", err.Error())
-		}
+
 		switch cmd.Parent() {
 		case commentCmd:
 			issueId := args[0]
@@ -111,6 +105,13 @@ var listCmd = &cobra.Command{
 				fmt.Println("Failed renderring comments: ", err)
 			}
 		case issueCmd:
+			status, errS := cmd.Flags().GetString("status")
+			project, errP := cmd.Flags().GetString("project")
+			verbose, errV := cmd.Flags().GetBool("verbose")
+			err := errors.Join(errS, errP, errV)
+			if err != nil {
+				fmt.Println("Failed parsing flags: ", err.Error())
+			}
 			if project == "" {
 				fmt.Println("Bad command: Project must be provided.")
 			}
@@ -212,12 +213,12 @@ func NewRoot() *cobra.Command {
 	commentCmd.AddCommand(getCmd)
 	commentCmd.AddCommand(&listCommentCmd)
 	commentCmd.AddCommand(addCmd)
-	commentCmd.AddCommand(&updateCommentCmd )
+	commentCmd.AddCommand(&updateCommentCmd)
 	commentCmd.AddCommand(deleteCmd)
 
 	issueCmd.AddCommand(getCmd)
 	issueCmd.AddCommand(&listIssueCmd)
-	issueCmd.AddCommand(&updateIssueCmd )
+	issueCmd.AddCommand(&updateIssueCmd)
 	rootCmd.AddCommand(issueCmd)
 	rootCmd.AddCommand(commentCmd)
 	return rootCmd
